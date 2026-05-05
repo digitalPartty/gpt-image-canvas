@@ -28,6 +28,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  DefaultSnapIndicator,
   Tldraw,
   type Editor,
   type TLAsset,
@@ -42,6 +43,7 @@ import {
   type TLComponents,
   type TldrawOptions,
   type TLUserPreferences,
+  type TLSnapIndicatorProps,
   useIsDarkMode,
   useEditor,
   useTldrawUser,
@@ -134,6 +136,7 @@ const RESOLUTION_BADGE_BASE_OFFSET = 7;
 const RESOLUTION_BADGE_MIN_SCALE = 0.52;
 const RESOLUTION_BADGE_SMALL_IMAGE_SIDE = 32;
 const RESOLUTION_BADGE_FULL_SIZE_IMAGE_SIDE = 220;
+const CANVAS_DEFAULT_SNAP_MODE = true;
 const shapeUtils = [GenerationPlaceholderShapeUtil, AgentPlanNodeShapeUtil];
 const tldrawOptions = {
   debouncedZoomThreshold: 80
@@ -1489,6 +1492,11 @@ function CanvasResolutionBadgeOverlay() {
   );
 }
 
+function CanvasSnapIndicator({ className, ...props }: TLSnapIndicatorProps) {
+  const snapIndicatorClassName = className ? `canvas-snap-indicator ${className}` : "canvas-snap-indicator";
+  return <DefaultSnapIndicator {...props} className={snapIndicatorClassName} />;
+}
+
 function usePointerClientPoint(editor: Editor): ClientPoint | undefined {
   const [point, setPoint] = useState<ClientPoint | undefined>();
   const frameRef = useRef<number | undefined>();
@@ -2410,21 +2418,31 @@ function ProviderStatusPopover({
 export function App() {
   const { formatDateTime, locale, setLocale, t } = useI18n();
   const tldrawLocale = tldrawLocaleForLocale(locale);
-  const tldrawUserPreferences = useMemo<TLUserPreferences>(
-    () => ({
-      id: TLDRAW_USER_ID,
-      locale: tldrawLocale
-    }),
-    [tldrawLocale]
-  );
+  const [tldrawUserPreferences, setTldrawUserPreferences] = useState<TLUserPreferences>(() => ({
+    id: TLDRAW_USER_ID,
+    isSnapMode: CANVAS_DEFAULT_SNAP_MODE,
+    locale: tldrawLocale
+  }));
+  useEffect(() => {
+    setTldrawUserPreferences((currentPreferences) =>
+      currentPreferences.locale === tldrawLocale ? currentPreferences : { ...currentPreferences, locale: tldrawLocale }
+    );
+  }, [tldrawLocale]);
   const syncTldrawUserPreferences = useCallback(
     (preferences: TLUserPreferences) => {
+      setTldrawUserPreferences({
+        ...preferences,
+        id: TLDRAW_USER_ID,
+        isSnapMode: preferences.isSnapMode ?? CANVAS_DEFAULT_SNAP_MODE,
+        locale: preferences.locale ?? tldrawLocale
+      });
+
       const nextLocale = localeForTldrawLocale(preferences.locale);
       if (nextLocale && nextLocale !== locale) {
         setLocale(nextLocale);
       }
     },
-    [locale, setLocale]
+    [locale, setLocale, tldrawLocale]
   );
   const tldrawUser = useTldrawUser({
     userPreferences: tldrawUserPreferences,
@@ -2580,6 +2598,7 @@ export function App() {
             <CanvasResolutionBadgeOverlay />
           </>
         ),
+        SnapIndicator: CanvasSnapIndicator,
         StylePanel: null
       }) satisfies TLComponents,
     []

@@ -122,7 +122,7 @@ export function parseEditPayload(input: unknown): ParseResult<EditImageProviderI
     if (!getStoredAssetFile(referenceAssetId)) {
       return {
         ok: false,
-        error: errorResponse("invalid_request", "找不到可记录的本地参考图像资源。")
+        error: errorResponse("invalid_request", "找不到可记录的参考图像资源。")
       };
     }
   }
@@ -398,7 +398,7 @@ function parseLocalOpenAIProviderConfig(input: unknown): ParseResult<SaveLocalOp
   if (!isRecord(input)) {
     return {
       ok: false,
-      error: errorResponse("invalid_provider_config", "Local OpenAI config must be a JSON object.")
+      error: errorResponse("invalid_provider_config", "Custom OpenAI config must be a JSON object.")
     };
   }
 
@@ -410,7 +410,7 @@ function parseLocalOpenAIProviderConfig(input: unknown): ParseResult<SaveLocalOp
     if (typeof input.apiKey !== "string") {
       return {
         ok: false,
-        error: errorResponse("invalid_provider_config", "Local OpenAI API key must be a string.")
+        error: errorResponse("invalid_provider_config", "Custom OpenAI API key must be a string.")
       };
     }
     config.apiKey = input.apiKey;
@@ -420,7 +420,7 @@ function parseLocalOpenAIProviderConfig(input: unknown): ParseResult<SaveLocalOp
     if (typeof input.baseUrl !== "string") {
       return {
         ok: false,
-        error: errorResponse("invalid_provider_config", "Local OpenAI base URL must be a string.")
+        error: errorResponse("invalid_provider_config", "Custom OpenAI base URL must be a string.")
       };
     }
     config.baseUrl = input.baseUrl;
@@ -430,7 +430,7 @@ function parseLocalOpenAIProviderConfig(input: unknown): ParseResult<SaveLocalOp
     if (typeof input.model !== "string") {
       return {
         ok: false,
-        error: errorResponse("invalid_provider_config", "Local OpenAI model must be a string.")
+        error: errorResponse("invalid_provider_config", "Custom OpenAI model must be a string.")
       };
     }
     config.model = input.model;
@@ -441,7 +441,7 @@ function parseLocalOpenAIProviderConfig(input: unknown): ParseResult<SaveLocalOp
     if (!timeoutMs) {
       return {
         ok: false,
-        error: errorResponse("invalid_provider_config", "Local OpenAI timeout must be a positive integer.")
+        error: errorResponse("invalid_provider_config", "Custom OpenAI timeout must be a positive integer.")
       };
     }
     config.timeoutMs = timeoutMs;

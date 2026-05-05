@@ -157,7 +157,7 @@ function providerSources(row: ProviderConfigRow | undefined): ProviderSourceView
     {
       id: "local-openai",
       kind: "local",
-      label: "Local OpenAI-compatible API",
+      label: "Custom OpenAI-compatible API",
       available: Boolean(localConfig),
       status: localConfig ? "available" : "missing_api_key",
       details: {
@@ -229,7 +229,7 @@ function resolveLocalConfigForSave(
     localBaseUrl: Object.hasOwn(input, "baseUrl") ? trimToNull(input.baseUrl) : (existing?.localBaseUrl ?? null),
     localModel: Object.hasOwn(input, "model") ? trimToNull(input.model) : (existing?.localModel ?? null),
     localTimeoutMs: Object.hasOwn(input, "timeoutMs")
-      ? requiredPositiveInteger(input.timeoutMs, "Local OpenAI timeout")
+      ? requiredPositiveInteger(input.timeoutMs, "Custom OpenAI timeout")
       : (existing?.localTimeoutMs ?? null)
   };
 }
