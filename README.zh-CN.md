@@ -4,8 +4,6 @@
 
 GPT Image Canvas 是一个本地优先的 AI 图像画布，支持文生图、参考图生成和多步骤 Agent 规划。项目基于 tldraw、Hono、SQLite 和 GPT Image 2 构建，适合在本机完成创作、管理历史和保存生成资产。
 
-当前版本：`v0.2.0`。
-
 ## 效果图
 
 ![GPT Image Canvas 效果图](docs/assets/app-preview.png)

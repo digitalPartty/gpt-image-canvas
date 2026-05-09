@@ -4,8 +4,6 @@
 
 Local AI image canvas for prompt-to-image generation, reference-image generation, and multi-step Agent planning. It combines tldraw, Hono, SQLite, and GPT Image 2 into a local-first creative workspace.
 
-Current version: `v0.2.0`.
-
 ## Preview
 
 ![GPT Image Canvas preview](docs/assets/app-preview.png)
