@@ -7,6 +7,11 @@
   color: var(--ink);
 }
 
+.gallery-page.app-view:not([hidden]) {
+  /* Keep fixed Gallery dialogs anchored to the viewport, not the scroll container. */
+  animation-name: app-view-fade-in;
+}
+
 .gallery-page__inner {
   max-width: 1560px;
   padding: clamp(0.75rem, 1.4vw, 1.15rem);
