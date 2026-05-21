@@ -3064,10 +3064,13 @@ function PromptFavoritesFloatingPanel({
                     <div className="prompt-favorites-item__media">
                       <img alt="" loading="lazy" src={favorite.assetUrl} />
                     </div>
-                    <div className="prompt-favorites-item__body">
+                    <div className="prompt-favorites-item__body" title={favorite.prompt}>
                       <h3>{favorite.title}</h3>
                       <p>{promptExcerpt(favorite.prompt)}</p>
                       <span>{promptFavoriteMeta(favorite, t)}</span>
+                      <div className="prompt-favorites-item__preview" aria-hidden="true">
+                        {favorite.prompt}
+                      </div>
                     </div>
                     <div className="prompt-favorites-item__actions">
                       <button className="primary-action prompt-favorites-item__use" type="button" onClick={() => onUse(favorite)}>
