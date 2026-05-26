@@ -15,19 +15,26 @@ export function registerImageRoutes(app: Hono): void {
   initializeGenerationTaskManager();
 
   app.post("/api/images/generate", async (c) => {
+    console.log("[images/generate] Request received");
     const payload = await readJson(c.req.raw);
     if (!payload.ok) {
+      console.error("[images/generate] Invalid JSON:", payload.error);
       return c.json(payload.error, 400);
     }
 
     const parsed = parseGeneratePayload(payload.value);
     if (!parsed.ok) {
+      console.error("[images/generate] Invalid payload:", parsed.error);
       return c.json(parsed.error, 400);
     }
 
+    console.log("[images/generate] Starting generation task");
     try {
-      return c.json({ record: startTextToImageGenerationTask(parsed.value) });
+      const record = startTextToImageGenerationTask(parsed.value);
+      console.log("[images/generate] Task started:", record.id);
+      return c.json({ record });
     } catch (error) {
+      console.error("[images/generate] Error:", error);
       if (error instanceof ProviderError) {
         return providerErrorJson(c, error);
       }

@@ -66,8 +66,11 @@ function startBackgroundGenerationTask(generationId: string, run: (signal: Abort
 
   void (async () => {
     try {
+      console.log(`[generation-task] Starting background task: ${generationId}`);
       await run(controller.signal);
+      console.log(`[generation-task] Task completed: ${generationId}`);
     } catch (error) {
+      console.error(`[generation-task] Task error: ${generationId}`, error);
       if (controller.signal.aborted) {
         cancelGenerationRecord(generationId);
       } else {

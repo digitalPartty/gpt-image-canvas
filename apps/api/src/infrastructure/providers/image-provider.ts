@@ -120,15 +120,30 @@ class OpenAIImageProvider implements ImageProvider {
   private readonly client: OpenAI;
 
   constructor(private readonly config: OpenAIImageProviderConfig) {
+    const isOfficialOpenAI = !config.baseURL ||
+      config.baseURL.includes("api.openai.com") ||
+      config.baseURL.includes("openai.azure.com");
+
     this.client = new OpenAI({
       apiKey: config.apiKey,
       baseURL: config.baseURL,
-      timeout: config.timeoutMs
+      timeout: config.timeoutMs,
+      defaultHeaders: isOfficialOpenAI ? undefined : {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
+      }
     });
   }
 
   async generate(input: ImageProviderInput, signal?: AbortSignal): Promise<ProviderResult> {
     try {
+      console.log("[OpenAIImageProvider] Generating image with config:", {
+        model: this.config.model,
+        baseURL: this.config.baseURL,
+        prompt: input.prompt.substring(0, 100),
+        size: input.sizeApiValue
+      });
       const response = await this.client.images.generate(
         imageGenerateRequestBody({
           model: this.config.model,
@@ -141,8 +156,10 @@ class OpenAIImageProvider implements ImageProvider {
         { signal }
       );
 
+      console.log("[OpenAIImageProvider] Generation successful");
       return await normalizeProviderResponse(response, input.sizeApiValue, this.config.model, signal);
     } catch (error) {
+      console.error("[OpenAIImageProvider] Generation failed:", error);
       throw toProviderError(error);
     }
   }

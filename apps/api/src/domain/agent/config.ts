@@ -30,9 +30,19 @@ export function getUsableAgentLlmConfig(): UsableAgentLlmConfig | undefined {
     return undefined;
   }
 
+  // Normalize baseUrl: ensure it ends with /v1 for OpenAI-compatible APIs
+  let baseUrl = trimToUndefined(row?.baseUrl);
+  if (baseUrl && !baseUrl.includes('api.openai.com') && !baseUrl.includes('openai.azure.com')) {
+    // For third-party APIs, ensure /v1 suffix
+    if (!baseUrl.endsWith('/v1')) {
+      baseUrl = baseUrl.replace(/\/$/, '') + '/v1';
+      console.log('[getUsableAgentLlmConfig] Normalized baseUrl:', baseUrl);
+    }
+  }
+
   return {
     apiKey,
-    baseUrl: trimToUndefined(row?.baseUrl),
+    baseUrl,
     model,
     timeoutMs,
     supportsVision: row?.supportsVision === 1

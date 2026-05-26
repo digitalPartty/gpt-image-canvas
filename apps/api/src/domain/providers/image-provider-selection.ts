@@ -27,13 +27,21 @@ export interface ConfiguredImageProviderSelection {
 }
 
 export async function createConfiguredImageProvider(signal?: AbortSignal): Promise<ImageProvider> {
+  console.log("[image-provider-selection] Creating configured image provider");
   const selection = await selectConfiguredImageProviderSource(signal);
 
   if (selection?.openAIConfig) {
+    console.log("[image-provider-selection] Using OpenAI provider from source:", selection.sourceId);
+    console.log("[image-provider-selection] Config:", {
+      baseURL: selection.openAIConfig.baseURL,
+      model: selection.openAIConfig.model,
+      hasApiKey: Boolean(selection.openAIConfig.apiKey)
+    });
     return createOpenAIImageProvider(selection.openAIConfig);
   }
 
   if (selection?.provider === "codex" && selection.codexSession) {
+    console.log("[image-provider-selection] Using Codex provider");
     return createCodexImageProvider({
       baseURL: getCodexResponsesBaseURL(),
       responsesModel: getCodexResponsesModel(),
@@ -43,6 +51,7 @@ export async function createConfiguredImageProvider(signal?: AbortSignal): Promi
     });
   }
 
+  console.error("[image-provider-selection] No provider available");
   throw new ProviderError(
     "missing_provider",
     "服务器没有配置 OPENAI_API_KEY，也没有可用的 Codex 登录会话。请先登录 Codex 后重试。",

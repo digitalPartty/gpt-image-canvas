@@ -297,7 +297,7 @@ export async function createGenerationPlan(input: AgentPlannerInput): Promise<Ag
 
   const plannerOptions = normalizeAgentPlannerOptions(input.plannerOptions);
   const planningSkillLoadout = input.skillLoadout ?? createBuiltInPlanningSkillLoadoutForRequest(userText);
-  const runner = input.runner ?? createDeepAgentsPlanner(input.llmConfig, plannerOptions, planningSkillLoadout);
+  const runner = input.runner ?? await createDeepAgentsPlanner(input.llmConfig, plannerOptions, planningSkillLoadout);
   const now = input.now ?? new Date();
   const planId = `plan-${randomUUID()}`;
   const message = buildPlannerUserMessage({
@@ -352,6 +352,32 @@ export async function createGenerationPlan(input: AgentPlannerInput): Promise<Ag
         agentResult
       };
     } catch (error) {
+      console.error("[planner] Agent invocation error:", error);
+      console.error("[planner] Error type:", typeof error);
+      console.error("[planner] Error constructor:", error?.constructor?.name);
+      if (error && typeof error === "object") {
+        console.error("[planner] Error keys:", Object.keys(error));
+
+        // Try to extract the root cause
+        let currentError: any = error;
+        let depth = 0;
+        while (currentError && depth < 10) {
+          console.error(`[planner] Error depth ${depth}:`, {
+            name: currentError.name,
+            message: currentError.message,
+            hasCause: !!currentError.cause,
+            causeType: currentError.cause?.constructor?.name
+          });
+
+          if (currentError.cause) {
+            currentError = currentError.cause;
+            depth++;
+          } else {
+            break;
+          }
+        }
+      }
+
       if (input.signal?.aborted) {
         return agentRunCancelledResult();
       }
@@ -543,13 +569,13 @@ function emitAssistantDelta(onAssistantDelta: AgentPlannerInput["onAssistantDelt
   }
 }
 
-export function createDeepAgentsPlanner(
+export async function createDeepAgentsPlanner(
   config: UsableAgentLlmConfig,
   plannerOptions?: AgentPlannerOptions,
   skillLoadout?: PlanningSkillLoadout
-): GenerationPlanAgentRunner {
+): Promise<GenerationPlanAgentRunner> {
   const isDeepSeek = isDeepSeekAgentConfig(config);
-  const model = createAgentChatModel(config, isDeepSeek, plannerOptions);
+  const model = await createAgentChatModel(config, isDeepSeek, plannerOptions);
 
   if (isDeepSeek) {
     return createDirectChatPlanner(model, skillLoadout);
@@ -563,23 +589,169 @@ export function createDeepAgentsPlanner(
   }) as unknown as GenerationPlanAgentRunner;
 }
 
-function createAgentChatModel(
+async function createAgentChatModel(
   config: UsableAgentLlmConfig,
   isDeepSeek = isDeepSeekAgentConfig(config),
   plannerOptions?: AgentPlannerOptions
-): ChatOpenAI {
+): Promise<ChatOpenAI> {
   const modelKwargs = agentModelKwargsForConfig(config, plannerOptions);
-  return new ChatOpenAI({
+
+  // Check if using official OpenAI or Azure OpenAI
+  const isOfficialOpenAI = !config.baseUrl ||
+    config.baseUrl.includes("api.openai.com") ||
+    config.baseUrl.includes("openai.azure.com");
+
+  console.log("[createAgentChatModel] Config:", {
+    baseUrl: config.baseUrl,
+    model: config.model,
+    isOfficialOpenAI,
+    willAddCustomHeaders: !isOfficialOpenAI
+  });
+
+  // For third-party APIs, add browser-like headers to bypass Cloudflare
+  const defaultHeaders = isOfficialOpenAI ? undefined : {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
+  };
+
+  // LangChain's ChatOpenAI accepts configuration as ClientOptions
+  // We need to pass it in a specific format
+  const configuration = config.baseUrl ? {
+    baseURL: config.baseUrl,
+    defaultHeaders
+  } : undefined;
+
+  console.log("[createAgentChatModel] Configuration:", {
+    baseURL: configuration?.baseURL,
+    hasDefaultHeaders: Boolean(configuration?.defaultHeaders),
+    defaultHeaders: configuration?.defaultHeaders
+  });
+
+  // CRITICAL: Test with raw OpenAI SDK to see the actual error
+  console.log("[createAgentChatModel] Testing with raw OpenAI SDK first...");
+  const testPromise = (async () => {
+    try {
+      const { default: OpenAI } = await import("openai");
+      const testClient = new OpenAI({
+        apiKey: config.apiKey,
+        baseURL: config.baseUrl,
+        defaultHeaders,
+        timeout: 10000
+      });
+
+      console.log("[createAgentChatModel] Raw SDK client created, making test request...");
+      const response = await testClient.chat.completions.create({
+        model: config.model,
+        messages: [{ role: "user", content: "test" }],
+        max_tokens: 5
+      });
+
+      console.log("[createAgentChatModel] ✓ Raw SDK test SUCCESSFUL:");
+      console.log("[createAgentChatModel]   Response:", response);
+      console.log("[createAgentChatModel]   Response.model:", response.model);
+      console.log("[createAgentChatModel]   Response.choices:", response.choices);
+      if (Array.isArray(response.choices) && response.choices.length > 0) {
+        console.log("[createAgentChatModel]   First choice:", response.choices[0]);
+        console.log("[createAgentChatModel]   First message:", response.choices[0].message);
+      }
+    } catch (error: any) {
+      console.error("[createAgentChatModel] ✗ Raw SDK test FAILED:");
+      console.error("[createAgentChatModel]   Error name:", error?.constructor?.name);
+      console.error("[createAgentChatModel]   Error message:", error?.message);
+      console.error("[createAgentChatModel]   Error status:", error?.status);
+      console.error("[createAgentChatModel]   Error code:", error?.code);
+      console.error("[createAgentChatModel]   Error type:", error?.type);
+
+      // Try to get the actual API response
+      if (error?.response) {
+        console.error("[createAgentChatModel]   Response status:", error.response.status);
+        console.error("[createAgentChatModel]   Response headers:", error.response.headers);
+        try {
+          const responseText = await error.response.text();
+          console.error("[createAgentChatModel]   Response body:", responseText);
+        } catch (e) {
+          console.error("[createAgentChatModel]   Could not read response body");
+        }
+      }
+
+      console.error("[createAgentChatModel]   Full error:", error);
+    }
+  })();
+
+  // Wait for test to complete before creating ChatOpenAI
+  await testPromise;
+
+  // Create ChatOpenAI - LangChain doesn't properly pass configuration.defaultHeaders
+  // So we'll create it first, then replace its internal client
+  const chatModel = new ChatOpenAI({
     apiKey: config.apiKey,
-    configuration: config.baseUrl ? { baseURL: config.baseUrl } : undefined,
     maxRetries: 1,
     model: config.model,
     modelKwargs,
     streaming: isDeepSeek,
     streamUsage: false,
     temperature: isDeepSeek ? undefined : 0,
-    timeout: config.timeoutMs
+    timeout: config.timeoutMs,
+    // Try to disable strict validation for third-party APIs
+    ...((!isOfficialOpenAI) && {
+      // @ts-ignore - these might not be in types but could work
+      strictResponseValidation: false,
+      validateResponseSchema: false
+    })
   });
+
+  console.log("[createAgentChatModel] ChatOpenAI created with options:", {
+    model: config.model,
+    streaming: isDeepSeek,
+    temperature: isDeepSeek ? undefined : 0
+  });
+
+  // CRITICAL: LangChain's configuration parameter doesn't work properly
+  // We must manually replace the internal OpenAI client
+  console.log("[createAgentChatModel] ChatOpenAI created, replacing internal client...");
+  try {
+    const { default: OpenAI } = await import("openai");
+
+    // For third-party APIs, we need to set custom headers to bypass Cloudflare
+    // OpenAI SDK supports defaultHeaders in the constructor
+    const clientConfig: ConstructorParameters<typeof OpenAI>[0] = {
+      apiKey: config.apiKey,
+      timeout: config.timeoutMs
+    };
+
+    if (config.baseUrl) {
+      clientConfig.baseURL = config.baseUrl;
+    }
+
+    // Add custom headers for third-party APIs
+    if (!isOfficialOpenAI && defaultHeaders) {
+      clientConfig.defaultHeaders = defaultHeaders;
+    }
+
+    console.log("[createAgentChatModel] Creating custom OpenAI client with config:", {
+      baseURL: clientConfig.baseURL,
+      hasDefaultHeaders: Boolean(clientConfig.defaultHeaders),
+      headerKeys: clientConfig.defaultHeaders ? Object.keys(clientConfig.defaultHeaders) : []
+    });
+
+    const customClient = new OpenAI(clientConfig);
+
+    // Replace the internal client
+    (chatModel as any).client = customClient;
+    console.log("[createAgentChatModel] Internal client replaced successfully");
+
+    // Verify the client configuration
+    const verifyHeaders = (customClient as any).defaultHeaders || (customClient as any)._defaultHeaders;
+    console.log("[createAgentChatModel] Verification - client.baseURL:", customClient.baseURL);
+    console.log("[createAgentChatModel] Verification - client has headers:", Boolean(verifyHeaders));
+    console.log("[createAgentChatModel] Verification - header keys:", verifyHeaders ? Object.keys(verifyHeaders) : 'none');
+  } catch (e) {
+    console.error("[createAgentChatModel] Failed to replace internal client:", e);
+    throw e;
+  }
+
+  return chatModel;
 }
 
 export function createDirectChatPlanner(
@@ -589,44 +761,56 @@ export function createDirectChatPlanner(
   return {
     streamsThinkingDeltas: true,
     async invoke(input, options) {
-      const stream = await model.stream(
-        [
+      try {
+        const stream = await model.stream(
+          [
+            {
+              role: "system",
+              content: createDirectPlanningSystemPrompt(skillLoadout)
+            },
+            ...input.messages
+          ] as never,
           {
-            role: "system",
-            content: createDirectPlanningSystemPrompt(skillLoadout)
-          },
-          ...input.messages
-        ] as never,
-        {
-          signal: options?.signal
-        } as never
-      );
-      const contentChunks: string[] = [];
-      const reasoningSeen = new Set<string>();
+            signal: options?.signal
+          } as never
+        );
+        const contentChunks: string[] = [];
+        const reasoningSeen = new Set<string>();
 
-      for await (const chunk of stream as AsyncIterable<unknown>) {
-        throwIfAborted(options?.signal);
-        for (const reasoningDelta of extractReasoningDeltasFromStreamChunk(chunk, reasoningSeen)) {
-          options?.onThinkingDelta?.(reasoningDelta);
-        }
-        throwIfAborted(options?.signal);
-
-        const content = extractContentDeltaFromStreamChunk(chunk);
-        if (content !== undefined) {
-          contentChunks.push(content);
-        }
-        throwIfAborted(options?.signal);
-      }
-
-      throwIfAborted(options?.signal);
-
-      return {
-        messages: [
-          {
-            content: contentChunks.join("")
+        for await (const chunk of stream as AsyncIterable<unknown>) {
+          throwIfAborted(options?.signal);
+          for (const reasoningDelta of extractReasoningDeltasFromStreamChunk(chunk, reasoningSeen)) {
+            options?.onThinkingDelta?.(reasoningDelta);
           }
-        ]
-      };
+          throwIfAborted(options?.signal);
+
+          const content = extractContentDeltaFromStreamChunk(chunk);
+          if (content !== undefined) {
+            contentChunks.push(content);
+          }
+          throwIfAborted(options?.signal);
+        }
+
+        throwIfAborted(options?.signal);
+
+        return {
+          messages: [
+            {
+              content: contentChunks.join("")
+            }
+          ]
+        };
+      } catch (error) {
+        console.error("[createDirectChatPlanner] Stream error:", error);
+        console.error("[createDirectChatPlanner] Error details:", {
+          name: error?.constructor?.name,
+          message: error?.message,
+          status: error?.status,
+          statusText: error?.statusText,
+          response: error?.response
+        });
+        throw error;
+      }
     }
   };
 }
@@ -728,7 +912,24 @@ function parseAgentReasoningEffort(input: unknown): AgentReasoningEffort | undef
 function isDeepSeekAgentConfig(config: Pick<UsableAgentLlmConfig, "baseUrl" | "model">): boolean {
   const model = config.model.trim().toLowerCase();
   const baseUrl = config.baseUrl?.trim().toLowerCase() ?? "";
-  return model.startsWith("deepseek-") || baseUrl.includes("deepseek.");
+
+  // DeepSeek models
+  if (model.startsWith("deepseek-") || baseUrl.includes("deepseek.")) {
+    return true;
+  }
+
+  // Third-party APIs (non-official OpenAI) - use direct chat planner
+  // because they may not support function calling / tool calling
+  const isOfficialOpenAI = !baseUrl ||
+    baseUrl.includes("api.openai.com") ||
+    baseUrl.includes("openai.azure.com");
+
+  if (!isOfficialOpenAI) {
+    console.log("[isDeepSeekAgentConfig] Using direct chat planner for third-party API:", baseUrl);
+    return true;
+  }
+
+  return false;
 }
 
 export function parseGenerationPlanDefaults(input: unknown): GenerationPlanDefaultsParseResult {
@@ -2279,7 +2480,42 @@ function invalidPlan(
 }
 
 function plannerRequestFailureMessage(error: unknown): string {
-  const detail = error instanceof Error ? sanitizePlannerErrorText(error.message) : "";
+  // Log the full error for debugging
+  console.error("[plannerRequestFailureMessage] Full error object:", error);
+  console.error("[plannerRequestFailureMessage] Error type:", typeof error);
+  console.error("[plannerRequestFailureMessage] Error constructor:", error?.constructor?.name);
+
+  // Try to extract the root cause from MiddlewareError chain
+  let currentError: any = error;
+  let depth = 0;
+  while (currentError && depth < 10) {
+    console.error(`[plannerRequestFailureMessage] Error at depth ${depth}:`, {
+      name: currentError.name,
+      message: currentError.message,
+      hasCause: Boolean(currentError.cause),
+      status: currentError.status,
+      code: currentError.code,
+      type: currentError.type
+    });
+
+    if (currentError.cause) {
+      currentError = currentError.cause;
+      depth++;
+    } else {
+      break;
+    }
+  }
+
+  let detail = "";
+
+  if (error instanceof Error) {
+    detail = sanitizePlannerErrorText(error.message);
+  } else if (isRecord(error) && typeof error.message === "string") {
+    detail = sanitizePlannerErrorText(error.message);
+  } else if (typeof error === "string") {
+    detail = sanitizePlannerErrorText(error);
+  }
+
   return detail ? `Agent planner request failed: ${detail}` : "Agent planner request failed.";
 }
 
