@@ -800,7 +800,7 @@ export function createDirectChatPlanner(
             }
           ]
         };
-      } catch (error) {
+      } catch (error: any) {
         console.error("[createDirectChatPlanner] Stream error:", error);
         console.error("[createDirectChatPlanner] Error details:", {
           name: error?.constructor?.name,
